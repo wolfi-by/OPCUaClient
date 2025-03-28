@@ -301,7 +301,7 @@ namespace OPCUaClient
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, 2),
+                NodeId = new NodeId(address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {

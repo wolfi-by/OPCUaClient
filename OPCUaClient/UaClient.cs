@@ -536,9 +536,10 @@ namespace OPCUaClient
         /// </param>
         public void Monitoring(String address, int miliseconds, MonitoredItemNotificationEventHandler monitor)
         {
+            if (this._session is null) return;
             var subscription = this.Subscription(miliseconds);
             MonitoredItem monitored = new MonitoredItem();
-            monitored.StartNodeId = new NodeId(address, 2);
+            monitored.StartNodeId = new NodeId(address);
             monitored.AttributeId = Attributes.Value;
             monitored.Notification += monitor;
             subscription.AddItem(monitored);
@@ -547,6 +548,26 @@ namespace OPCUaClient
             subscription.ApplyChanges();
         }
 
+        /// <summary>
+        /// Remove monitoring of a tag
+        /// </summary>
+        /// <param name="address"></param>
+        public void RemoveMonitoring(String address)
+        {
+            if (this._session is null) return;
+            MonitoredItem monitored = new MonitoredItem();
+            monitored.StartNodeId = new NodeId(address);
+            monitored.AttributeId = Attributes.Value;
+            var subscriptions = this._session.Subscriptions;
+            var itemsToRemove = subscriptions.Where(x => x.MonitoredItems.Any(y => y.StartNodeId == monitored.StartNodeId)).ToArray();
+            this._session.RemoveSubscriptions(itemsToRemove);
+
+            //monitored.Notification += monitor;
+            //subscription.AddItem(monitored);
+            //this._session.AddSubscription(subscription);
+            //subscription.Create();
+            //subscription.ApplyChanges();
+        }
 
         /// <summary>
         /// Scan root folder of OPC UA server and get all devices

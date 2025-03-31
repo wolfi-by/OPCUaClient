@@ -206,6 +206,9 @@ namespace OPCUaClient
         /// <param name="keepAlive">
         /// Sets whether to try to connect to the server in case the connection is lost.
         /// </param>
+        /// <param name="ct">
+        /// CancellationToken to cancel the operation.
+        /// </param>
         /// <exception cref="ServerException"></exception>
         public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
         {
@@ -223,6 +226,8 @@ namespace OPCUaClient
             {
                 throw new ServerException("Error creating a session on the server");
             }
+
+            
         }
 
         private void KeepAlive(ISession session, KeepAliveEventArgs e)
@@ -349,8 +354,8 @@ namespace OPCUaClient
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
-                    AttributeId = Attributes.Value
+                    NodeId = new NodeId(address),
+                    AttributeId = Attributes.Value 
                 }
             };
             this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
@@ -385,8 +390,8 @@ namespace OPCUaClient
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
-                    AttributeId = Attributes.Value
+                    NodeId = new NodeId(address),
+                    AttributeId = Attributes.NodeClass
                 }
             };
 
@@ -626,7 +631,7 @@ namespace OPCUaClient
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, 2));
+            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address));
 
             foreach (var result in browseResults)
             {
@@ -663,7 +668,7 @@ namespace OPCUaClient
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, 2));
+            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address));
             foreach (var result in browseResults)
             {
                 if (result.NodeClass == NodeClass.Variable)
@@ -777,7 +782,7 @@ namespace OPCUaClient
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, 2),
+                NodeId = new NodeId(address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {
@@ -866,7 +871,7 @@ namespace OPCUaClient
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
+                    NodeId = new NodeId(address),
                     AttributeId = Attributes.Value
                 }
             };

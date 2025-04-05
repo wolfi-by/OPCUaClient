@@ -4,6 +4,14 @@ using OPCUaClient.Objects;
 using OPCUaClient.Exceptions;
 using Opc.Ua.Configuration;
 using Opc.Ua.Gds;
+using System.Threading.Tasks;
+using Opc.Ua.Client.ComplexTypes;
+using static Opc.Ua.RelativePathFormatter;
+using System.Reflection;
+using System.Diagnostics.Metrics;
+using Newtonsoft.Json.Linq;
+
+
 
 namespace OPCUaClient
 {
@@ -16,6 +24,7 @@ namespace OPCUaClient
 
         private readonly ConfiguredEndpoint _endpoint;
         private Session? _session = null;
+        public ComplexTypeSystem? _complexTypeSystem = null;
         private readonly UserIdentity _userIdentity;
         private readonly ApplicationConfiguration _appConfig;
         private const int ReconnectPeriod = 10000;
@@ -227,7 +236,12 @@ namespace OPCUaClient
                 throw new ServerException("Error creating a session on the server");
             }
 
-            
+
+
+            _complexTypeSystem = new ComplexTypeSystem(_session);
+
+            await _complexTypeSystem.Load().ConfigureAwait(false);
+            var types = _complexTypeSystem.GetDefinedTypes();
         }
 
         private void KeepAlive(ISession session, KeepAliveEventArgs e)
@@ -355,7 +369,7 @@ namespace OPCUaClient
                 new ReadValueId
                 {
                     NodeId = new NodeId(address),
-                    AttributeId = Attributes.Value 
+                    AttributeId = Attributes.Value
                 }
             };
             this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
@@ -366,6 +380,8 @@ namespace OPCUaClient
             tag.Code = dataValues[0].StatusCode;
             return tag;
         }
+
+
 
 
         /// <summary>
@@ -384,14 +400,14 @@ namespace OPCUaClient
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public TValue Read<TValue>(String address)
+        public async Task<TValue> Read<TValue>(String address)
         {
             ReadValueIdCollection readValues = new ReadValueIdCollection()
             {
                 new ReadValueId
                 {
                     NodeId = new NodeId(address),
-                    AttributeId = Attributes.NodeClass
+                    AttributeId = Attributes.Value
                 }
             };
 
@@ -399,63 +415,104 @@ namespace OPCUaClient
             this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                 out DiagnosticInfoCollection diagnosticInfo);
 
-
             if (dataValues[0].StatusCode != StatusCodes.Good)
             {
                 throw new ReadException(dataValues[0].StatusCode.Code.ToString());
             }
 
-            if (typeof(TValue) == typeof(Boolean))
-            {
-                return (TValue)(object)Convert.ToBoolean(dataValues[0].Value);
+            var ct = CancellationToken.None;
+            
+            var response =await _session.ReadAsync (null,0,TimestampsToReturn.Both, readValues,ct);
+
+            var references=_session.FetchReferences(address);
+            if (references != null) {
+
+                Type type = typeof(TValue);
+                object instance = (TValue)Activator.CreateInstance(typeof(TValue))!;
+                
+                foreach (var reference in references.Where(r => r.NodeClass.ToString() == "Variable"))
+                {
+                   
+                    NodeId nodeId = new NodeId(reference.NodeId.ToString());
+                    
+                    PropertyInfo? prop = type.GetProperty(reference.DisplayName!.ToString());
+                    if (!(prop  is null)){ 
+                    var value = GetValueByType(prop.PropertyType, _session.ReadValue(nodeId));
+                    prop.SetValue(instance, value, null);
+                    Console.WriteLine(reference.BrowseName + " NodeId: " + reference.NodeId.ToString() + "value: " + value);
+                    }
+                }
+                return (TValue)instance;
             }
-            else if (typeof(TValue) == typeof(byte))
+            return default!;
+
+
+        }
+
+        
+
+       private object GetValueByType(Type T, DataValue value)
+        {
+            if (T == typeof(Boolean))
             {
-                return (TValue)(object)Convert.ToByte(dataValues[0].Value);
+                return Convert.ToBoolean(value.Value);
             }
-            else if (typeof(TValue) == typeof(UInt16))
+            else if (T == typeof(byte))
             {
-                return (TValue)(object)Convert.ToUInt16(dataValues[0].Value);
+                return Convert.ToByte(value.Value);
             }
-            else if (typeof(TValue) == typeof(UInt32))
+            else if (T == typeof(UInt16))
             {
-                return (TValue)(object)Convert.ToUInt32(dataValues[0].Value);
+                return Convert.ToUInt16(value.Value);
             }
-            else if (typeof(TValue) == typeof(UInt64))
+            else if (T == typeof(UInt32))
             {
-                return (TValue)(object)Convert.ToUInt64(dataValues[0].Value);
+                return Convert.ToUInt32(value.Value);
             }
-            else if (typeof(TValue) == typeof(Int16))
+            else if (T == typeof(UInt64))
             {
-                return (TValue)(object)Convert.ToInt16(dataValues[0].Value);
+                return Convert.ToUInt64(value.Value);
             }
-            else if (typeof(TValue) == typeof(Int32))
+            else if (T == typeof(Int16))
             {
-                return (TValue)(object)Convert.ToInt32(dataValues[0].Value);
+                return Convert.ToInt16(value.Value);
             }
-            else if (typeof(TValue) == typeof(Int64))
+            else if (T == typeof(Int32))
             {
-                return (TValue)(object)Convert.ToInt64(dataValues[0].Value);
+                return Convert.ToInt32(value.Value);
             }
-            else if (typeof(TValue) == typeof(Single))
+            else if (T == typeof(Int64))
             {
-                return (TValue)(object)Convert.ToSingle(dataValues[0].Value);
+                return Convert.ToInt64(value.Value);
             }
-            else if (typeof(TValue) == typeof(Double))
+            else if (T == typeof(Single))
             {
-                return (TValue)(object)Convert.ToDouble(dataValues[0].Value);
+                return Convert.ToSingle(value.Value);
             }
-            else if (typeof(TValue) == typeof(Decimal))
+            else if (T == typeof(Double))
             {
-                return (TValue)(object)Convert.ToDecimal(dataValues[0].Value);
+                return Convert.ToDouble(value.Value);
             }
-            else if (typeof(TValue) == typeof(String))
+            else if (T == typeof(Decimal))
             {
-                return (TValue)(object)Convert.ToString(dataValues[0].Value);
+                return Convert.ToDecimal(value.Value);
             }
+            else if (T == typeof(String))
+            {
+                return Convert.ToString(value.Value)??string.Empty;
+            }
+            else if (T == typeof(DateTime))
+            {
+                return DateTime.Parse(value.Value.ToString() ?? string.Empty);
+            }
+            else if (T == typeof(Guid))
+            {
+                return Guid.Parse(value.Value.ToString() ?? string.Empty);
+            }
+            
             else
             {
-                throw new NotSupportedException();
+                return default!;
             }
         }
 

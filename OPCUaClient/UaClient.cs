@@ -10,6 +10,8 @@ using static Opc.Ua.RelativePathFormatter;
 using System.Reflection;
 using System.Diagnostics.Metrics;
 using Newtonsoft.Json.Linq;
+using Org.BouncyCastle.Asn1.X509.Qualified;
+using System.Collections;
 
 
 
@@ -421,27 +423,51 @@ namespace OPCUaClient
             }
 
             var ct = CancellationToken.None;
-            
-            var response =await _session.ReadAsync (null,0,TimestampsToReturn.Both, readValues,ct);
 
-            var references=_session.FetchReferences(address);
-            if (references != null) {
+            var response = await _session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+
+            var references = _session.FetchReferences(address);
+            if (references != null)
+            {
 
                 Type type = typeof(TValue);
                 object instance = (TValue)Activator.CreateInstance(typeof(TValue))!;
-                
+
                 foreach (var reference in references.Where(r => r.NodeClass.ToString() == "Variable"))
                 {
-                   
+
                     NodeId nodeId = new NodeId(reference.NodeId.ToString());
-                    
+
                     PropertyInfo? prop = type.GetProperty(reference.DisplayName!.ToString());
-                    if (!(prop  is null)){ 
-                    var value = GetValueByType(prop.PropertyType, _session.ReadValue(nodeId));
-                    prop.SetValue(instance, value, null);
-                    Console.WriteLine(reference.BrowseName + " NodeId: " + reference.NodeId.ToString() + "value: " + value);
+                    if (!(prop is null))
+                    {
+                        var isValue = prop.PropertyType.IsValueType || prop.PropertyType==typeof(string) || prop.PropertyType==typeof(DateTime);
+                        var isEnumerable = prop.PropertyType.IsGenericType;
+                        var isClass=prop.PropertyType.IsClass && prop.PropertyType != typeof(string) && prop.PropertyType != typeof(DateTime);
+
+                        if (isClass)
+                        {
+                            Type type2 = prop.PropertyType.GetType();
+                            object instance2 = Activator.CreateInstance(type2)!;
+                            var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
+                            prop.SetValue(instance2, classresult, null);
+                        }
+                        else if (isValue)
+                        {
+                            var value = GetValueByType(prop.PropertyType, _session.ReadValue(nodeId));
+                            //var value=Convert.ChangeType(_session.ReadValue(nodeId), prop.PropertyType);
+                            prop.SetValue(instance, value, null);
+                            Console.WriteLine(reference.BrowseName + " NodeId: " + reference.NodeId.ToString() + "value: " + value);
+                        }
+                        else if(isEnumerable){
+                            Type type2 = prop.PropertyType.GetType();
+                            object instance2 = Activator.CreateInstance(type2)!;
+                            var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
+                            prop.SetValue(instance2, classresult, null);
+                        }
                     }
                 }
+                               
                 return (TValue)instance;
             }
             return default!;
@@ -449,9 +475,9 @@ namespace OPCUaClient
 
         }
 
-        
 
-       private object GetValueByType(Type T, DataValue value)
+
+        private object GetValueByType(Type T, DataValue value)
         {
             if (T == typeof(Boolean))
             {
@@ -499,7 +525,7 @@ namespace OPCUaClient
             }
             else if (T == typeof(String))
             {
-                return Convert.ToString(value.Value)??string.Empty;
+                return Convert.ToString(value.Value) ?? string.Empty;
             }
             else if (T == typeof(DateTime))
             {
@@ -509,7 +535,7 @@ namespace OPCUaClient
             {
                 return Guid.Parse(value.Value.ToString() ?? string.Empty);
             }
-            
+
             else
             {
                 return default!;

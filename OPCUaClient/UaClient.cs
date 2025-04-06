@@ -12,6 +12,7 @@ using System.Diagnostics.Metrics;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1.X509.Qualified;
 using System.Collections;
+using System;
 
 
 
@@ -402,9 +403,16 @@ namespace OPCUaClient
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public async Task<TValue> Read<TValue>(String address)
+        public async Task<TValue> Read<TValue>(String address) where TValue : class
         {
-            ReadValueIdCollection readValues = new ReadValueIdCollection()
+            if (this._session is null) return default!;
+            var tag = new Tag
+            {
+                Address = address,
+                Value = null,
+            };
+            {
+                ReadValueIdCollection readValues = new ReadValueIdCollection()
             {
                 new ReadValueId
                 {
@@ -414,67 +422,72 @@ namespace OPCUaClient
             };
 
 
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
-                out DiagnosticInfoCollection diagnosticInfo);
+                this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+                    out DiagnosticInfoCollection diagnosticInfo);
 
-            if (dataValues[0].StatusCode != StatusCodes.Good)
-            {
-                throw new ReadException(dataValues[0].StatusCode.Code.ToString());
-            }
+                if (dataValues[0].StatusCode != StatusCodes.Good)
+                {
+                    throw new ReadException(dataValues[0].StatusCode.Code.ToString());
+                }
 
-            var ct = CancellationToken.None;
+                var ct = CancellationToken.None;
 
-            var response = await _session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+                var response = await _session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
-            var references = _session.FetchReferences(address);
-            if (references != null)
-            {
-
-                Type type = typeof(TValue);
-                object instance = (TValue)Activator.CreateInstance(typeof(TValue))!;
-
-                foreach (var reference in references.Where(r => r.NodeClass.ToString() == "Variable"))
+                var references = _session.FetchReferences(address);
+                if (references != null)
                 {
 
-                    NodeId nodeId = new NodeId(reference.NodeId.ToString());
+                    Type type = typeof(TValue);
+                    object instance = (TValue)Activator.CreateInstance(typeof(TValue))!;
 
-                    PropertyInfo? prop = type.GetProperty(reference.DisplayName!.ToString());
-                    if (!(prop is null))
+                    foreach (var reference in references.Where(r => r.NodeClass.ToString() == "Variable"))
                     {
-                        var isValue = prop.PropertyType.IsValueType || prop.PropertyType==typeof(string) || prop.PropertyType==typeof(DateTime);
-                        var isEnumerable = prop.PropertyType.IsGenericType;
-                        var isClass=prop.PropertyType.IsClass && prop.PropertyType != typeof(string) && prop.PropertyType != typeof(DateTime);
 
-                        if (isClass)
+                        NodeId nodeId = new NodeId(reference.NodeId.ToString());
+
+                        PropertyInfo? prop = type.GetProperty(reference.DisplayName!.ToString());
+                        if (!(prop is null))
                         {
-                            Type type2 = prop.PropertyType.GetType();
-                            object instance2 = Activator.CreateInstance(type2)!;
-                            var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
-                            prop.SetValue(instance2, classresult, null);
-                        }
-                        else if (isValue)
-                        {
-                            var value = GetValueByType(prop.PropertyType, _session.ReadValue(nodeId));
-                            //var value=Convert.ChangeType(_session.ReadValue(nodeId), prop.PropertyType);
-                            prop.SetValue(instance, value, null);
-                            Console.WriteLine(reference.BrowseName + " NodeId: " + reference.NodeId.ToString() + "value: " + value);
-                        }
-                        else if(isEnumerable){
-                            Type type2 = prop.PropertyType.GetType();
-                            object instance2 = Activator.CreateInstance(type2)!;
-                            var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
-                            prop.SetValue(instance2, classresult, null);
+                            var property = instance.GetType().GetProperty(reference.DisplayName!.ToString());
+                            var isValue = property!.PropertyType.IsValueType || prop.PropertyType == typeof(string) || prop.PropertyType == typeof(DateTime);
+                            var isEnumerable = property.PropertyType.BaseType == typeof(System.Array);
+                            var isClass = property.PropertyType.IsClass && prop.PropertyType != typeof(string) && prop.PropertyType != typeof(DateTime) && property.PropertyType.BaseType != typeof(System.Array);
+
+                            if (isClass)
+                            {
+                                Type type2 = prop.PropertyType.GetType();
+                                object instance2 = Activator.CreateInstance(type2)!;
+                                var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
+                                prop.SetValue(instance2, classresult, null);
+                            }
+                            else if (isValue)
+                            {
+                                var value = GetValueByType(prop.PropertyType, _session.ReadValue(nodeId));
+                                //var value=Convert.ChangeType(_session.ReadValue(nodeId), prop.PropertyType);
+                                prop.SetValue(instance, value, null);
+                                Console.WriteLine(reference.BrowseName + " NodeId: " + reference.NodeId.ToString() + "value: " + value);
+                            }
+                            else if (isEnumerable)
+                            {
+                                Type type2 = property.ReflectedType!;
+                                object instance2 = Activator.CreateInstance(type2)!;
+
+                                // var classresult = await Read<type2>(nodeId.ToString());
+
+                                //  var classresult = typeof(UaClient).GetMethod("Read")?.MakeGenericMethod(prop.PropertyType).Invoke(instance2, new object[] { nodeId });
+                                // prop.SetValue(instance2, classresult, null);
+                            }
                         }
                     }
+
+                    return (TValue)instance;
                 }
-                               
-                return (TValue)instance;
+                return default!;
+
+
             }
-            return default!;
-
-
         }
-
 
 
         private object GetValueByType(Type T, DataValue value)
@@ -986,7 +999,7 @@ namespace OPCUaClient
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public Task<TValue> ReadAsync<TValue>(String address, CancellationToken ct = default)
+        public Task<TValue> ReadAsync<TValue>(String address, CancellationToken ct = default) where TValue : class
         {
             return Task.Run(() => Read<TValue>(address), ct);
         }

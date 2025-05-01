@@ -4,38 +4,36 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace OPCUaClient.Objects
+namespace OPCUaClient.old.Objects
 {
 
     /// <summary>
-    /// Group of tags.
+    /// Device on the OPC UA Server
     /// </summary>
-    public class Group
+    public class Device
     {
 
         /// <summary>
-        /// Name of the group
+        /// Name of the device
         /// </summary>
-        public String Name
-        {
+        public string Name { 
             get
             {
-                return this.Address.Substring(this.Address.LastIndexOf(".") + 1);
+                return Address.Substring(Address.LastIndexOf(".") + 1);
             }
         }
-
         /// <summary>
-        /// Address of the group
+        /// Address of the device
         /// </summary>
-        public String Address { get; set; }
+        public string Address { get; set; }
 
         /// <summary>
-        /// Groups into the group <see cref="Group"/>
+        /// Groups into the device <see cref="Group"/>
         /// </summary>
         public List<Group> Groups { get; set; } = new List<Group>();
 
         /// <summary>
-        /// Tags into the group <see cref="Tag"/>
+        /// Tags into the device <see cref="Tag"/>
         /// </summary>
         public List<Tag> Tags { get; set; } = new List<Tag>();
     }

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Opc.Ua;
 
-namespace OPCUaClient.Objects
+namespace OPCUaClient.old.Objects
 {
 
     /// <summary>
@@ -17,23 +17,23 @@ namespace OPCUaClient.Objects
         /// <summary>
         /// Name of the tag
         /// </summary>
-        public String Name
+        public string Name
         {
             get
             {
-                return this.Address.Substring(this.Address.LastIndexOf(".") + 1);
+                return Address.Substring(Address.LastIndexOf(".") + 1);
             }
         }
 
         /// <summary>
         /// Address of the tag
         /// </summary>
-        public String Address { get; set; }
+        public string Address { get; set; }
 
         /// <summary>
         /// Value of the tag
         /// </summary>
-        public Object Value { get; set; }
+        public object Value { get; set; }
 
 
         /// <summary>
@@ -44,10 +44,10 @@ namespace OPCUaClient.Objects
         /// <summary>
         /// Quality of the tag
         /// </summary>
-        public Boolean Quality { 
+        public bool Quality { 
             get 
             {
-                return StatusCode.IsGood(this.Code);
+                return StatusCode.IsGood(Code);
             } 
         }
     }

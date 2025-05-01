@@ -1,7 +1,5 @@
 ﻿using Opc.Ua;
 using Opc.Ua.Client;
-using OPCUaClient.Objects;
-using OPCUaClient.Exceptions;
 using Opc.Ua.Configuration;
 using Opc.Ua.Gds;
 using System.Threading.Tasks;
@@ -13,10 +11,18 @@ using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1.X509.Qualified;
 using System.Collections;
 using System;
+using System.ComponentModel.DataAnnotations;
+using static System.Collections.Specialized.BitVector32;
+using System.Drawing;
+using System.Dynamic;
+using Microsoft.AspNetCore.DataProtection.Internal;
+using OPCUaClient.old.Grok;
+using OPCUaClient.old.Exceptions;
+using OPCUaClient.old.Objects;
 
 
 
-namespace OPCUaClient
+namespace OPCUaClient.old
 {
     /// <summary>
     /// Client for OPCUA Server
@@ -40,20 +46,20 @@ namespace OPCUaClient
 
         private void Reconnect(object sender, EventArgs e)
         {
-            if (!ReferenceEquals(sender, this._reconnectHandler))
+            if (!ReferenceEquals(sender, _reconnectHandler))
             {
                 return;
             }
 
-            lock (this._lock)
+            lock (_lock)
             {
-                if (this._reconnectHandler.Session != null)
+                if (_reconnectHandler.Session != null)
                 {
-                    this._session = (Session)_reconnectHandler.Session;
+                    _session = (Session)_reconnectHandler.Session;
                 }
 
-                this._reconnectHandler.Dispose();
-                this._reconnectHandler = null;
+                _reconnectHandler.Dispose();
+                _reconnectHandler = null;
             }
         }
 
@@ -79,7 +85,7 @@ namespace OPCUaClient
         /// <summary>
         /// Indicates if the instance is connected to the server.
         /// </summary>
-        public bool IsConnected => this._session is { Connected: true };
+        public bool IsConnected => _session is { Connected: true };
 
         #endregion
 
@@ -106,16 +112,16 @@ namespace OPCUaClient
         /// <param name="password">
         /// Password of the user
         /// </param>
-        public UaClient(String appName, String serverUrl, bool security, bool untrusted, String user = "",
-            String password = "")
+        public UaClient(string appName, string serverUrl, bool security, bool untrusted, string user = "",
+            string password = "")
         {
-            String path = Path.Combine(Directory.GetCurrentDirectory(), "Certificates");
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "Certificates");
             Directory.CreateDirectory(path);
             Directory.CreateDirectory(Path.Combine(path, "Application"));
             Directory.CreateDirectory(Path.Combine(path, "Trusted"));
             Directory.CreateDirectory(Path.Combine(path, "TrustedPeer"));
             Directory.CreateDirectory(Path.Combine(path, "Rejected"));
-            String hostName = System.Net.Dns.GetHostName();
+            string hostName = System.Net.Dns.GetHostName();
 
             _userIdentity = user.Length > 0 ? new UserIdentity(user, password) : new UserIdentity();
             _appConfig = new ApplicationConfiguration
@@ -162,7 +168,7 @@ namespace OPCUaClient
 
             if (_appConfig.SecurityConfiguration.AutoAcceptUntrustedCertificates)
             {
-                _appConfig.CertificateValidator.CertificateValidation += (s, ee) => { ee.Accept = (ee.Error.StatusCode == StatusCodes.BadCertificateUntrusted && untrusted); };
+                _appConfig.CertificateValidator.CertificateValidation += (s, ee) => { ee.Accept = ee.Error.StatusCode == StatusCodes.BadCertificateUntrusted && untrusted; };
             }
 
             var application = new ApplicationInstance
@@ -191,19 +197,19 @@ namespace OPCUaClient
         /// <exception cref="ServerException"></exception>
         public void Connect(uint timeOut = 5, bool keepAlive = false)
         {
-            this.Disconnect();
+            Disconnect();
 
-            this._session =
+            _session =
                 Task.Run(
                     async () => await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
                         timeOut * 1000, _userIdentity, null)).GetAwaiter().GetResult();
 
             if (keepAlive)
             {
-                this._session.KeepAlive += this.KeepAlive;
+                _session.KeepAlive += KeepAlive;
             }
 
-            if (this._session == null || !this._session.Connected)
+            if (_session == null || !_session.Connected)
             {
                 throw new ServerException("Error creating a session on the server");
             }
@@ -224,17 +230,17 @@ namespace OPCUaClient
         /// <exception cref="ServerException"></exception>
         public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
         {
-            await this.DisconnectAsync(ct);
+            await DisconnectAsync(ct);
 
-            this._session = await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
+            _session = await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
                 timeOut * 1000, _userIdentity, null, ct);
 
             if (keepAlive)
             {
-                this._session.KeepAlive += this.KeepAlive;
+                _session.KeepAlive += KeepAlive;
             }
 
-            if (this._session == null || !this._session.Connected)
+            if (_session == null || !_session.Connected)
             {
                 throw new ServerException("Error creating a session on the server");
             }
@@ -252,11 +258,11 @@ namespace OPCUaClient
             try
             {
                 if (!ServiceResult.IsBad(e.Status)) return;
-                lock (this._lock)
+                lock (_lock)
                 {
-                    if (this._reconnectHandler != null) return;
-                    this._reconnectHandler = new SessionReconnectHandler(true);
-                    this._reconnectHandler.BeginReconnect(this._session, ReconnectPeriod, this.Reconnect);
+                    if (_reconnectHandler != null) return;
+                    _reconnectHandler = new SessionReconnectHandler(true);
+                    _reconnectHandler.BeginReconnect(_session, ReconnectPeriod, Reconnect);
                 }
             }
             catch (Exception ex)
@@ -270,19 +276,19 @@ namespace OPCUaClient
         /// </summary>
         public void Disconnect()
         {
-            if (this._session is { Connected: true })
+            if (_session is { Connected: true })
             {
-                if (this._session.Subscriptions != null && this._session.Subscriptions.Any())
+                if (_session.Subscriptions != null && _session.Subscriptions.Any())
                 {
-                    foreach (var subscription in this._session.Subscriptions)
+                    foreach (var subscription in _session.Subscriptions)
                     {
                         subscription.Delete(true);
                     }
                 }
 
-                this._session.Close();
-                this._session.Dispose();
-                this._session = null;
+                _session.Close();
+                _session.Dispose();
+                _session = null;
             }
         }
 
@@ -291,19 +297,19 @@ namespace OPCUaClient
         /// </summary>
         public async Task DisconnectAsync(CancellationToken ct = default)
         {
-            if (this._session is { Connected: true })
+            if (_session is { Connected: true })
             {
-                if (this._session.Subscriptions != null && this._session.Subscriptions.Any())
+                if (_session.Subscriptions != null && _session.Subscriptions.Any())
                 {
-                    foreach (var subscription in this._session.Subscriptions)
+                    foreach (var subscription in _session.Subscriptions)
                     {
                         await subscription.DeleteAsync(true, ct);
                     }
                 }
 
-                await this._session.CloseAsync(ct);
-                this._session.Dispose();
-                this._session = null;
+                await _session.CloseAsync(ct);
+                _session.Dispose();
+                _session = null;
             }
         }
 
@@ -318,7 +324,7 @@ namespace OPCUaClient
         /// Value to write
         /// </param>
         /// <exception cref="WriteException"></exception>
-        public void Write(String address, Object value)
+        public void Write(string address, object value)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
@@ -331,7 +337,7 @@ namespace OPCUaClient
                 }
             };
             writeValues.Add(writeValue);
-            this._session.Write(null, writeValues, out StatusCodeCollection statusCodes,
+            _session.Write(null, writeValues, out StatusCodeCollection statusCodes,
                 out DiagnosticInfoCollection diagnosticInfo);
             if (!StatusCode.IsGood(statusCodes[0]))
             {
@@ -347,7 +353,7 @@ namespace OPCUaClient
         /// <exception cref="WriteException"></exception>
         public void Write(Tag tag)
         {
-            this.Write(tag.Address, tag.Value);
+            Write(tag.Address, tag.Value);
         }
 
 
@@ -360,7 +366,7 @@ namespace OPCUaClient
         /// <returns>
         /// <see cref="Tag"/>
         /// </returns>
-        public Tag Read(String address)
+        public Tag Read(string address)
         {
             var tag = new Tag
             {
@@ -375,7 +381,7 @@ namespace OPCUaClient
                     AttributeId = Attributes.Value
                 }
             };
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+            _session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                 out DiagnosticInfoCollection diagnosticInfo);
 
 
@@ -403,9 +409,9 @@ namespace OPCUaClient
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public async Task<TValue> Read<TValue>(String address) where TValue : class
+        public async Task<TValue> Read<TValue>(string address) where TValue : class
         {
-            if (this._session is null) return default!;
+            if (_session is null) return default!;
             var tag = new Tag
             {
                 Address = address,
@@ -422,7 +428,7 @@ namespace OPCUaClient
             };
 
 
-                this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+                _session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                     out DiagnosticInfoCollection diagnosticInfo);
 
                 if (dataValues[0].StatusCode != StatusCodes.Good)
@@ -451,8 +457,8 @@ namespace OPCUaClient
                         {
                             var property = instance.GetType().GetProperty(reference.DisplayName!.ToString());
                             var isValue = property!.PropertyType.IsValueType || prop.PropertyType == typeof(string) || prop.PropertyType == typeof(DateTime);
-                            var isEnumerable = property.PropertyType.BaseType == typeof(System.Array);
-                            var isClass = property.PropertyType.IsClass && prop.PropertyType != typeof(string) && prop.PropertyType != typeof(DateTime) && property.PropertyType.BaseType != typeof(System.Array);
+                            var isEnumerable = property.PropertyType.BaseType == typeof(Array);
+                            var isClass = property.PropertyType.IsClass && prop.PropertyType != typeof(string) && prop.PropertyType != typeof(DateTime) && property.PropertyType.BaseType != typeof(Array);
 
                             if (isClass)
                             {
@@ -492,7 +498,7 @@ namespace OPCUaClient
 
         private object GetValueByType(Type T, DataValue value)
         {
-            if (T == typeof(Boolean))
+            if (T == typeof(bool))
             {
                 return Convert.ToBoolean(value.Value);
             }
@@ -500,43 +506,43 @@ namespace OPCUaClient
             {
                 return Convert.ToByte(value.Value);
             }
-            else if (T == typeof(UInt16))
+            else if (T == typeof(ushort))
             {
                 return Convert.ToUInt16(value.Value);
             }
-            else if (T == typeof(UInt32))
+            else if (T == typeof(uint))
             {
                 return Convert.ToUInt32(value.Value);
             }
-            else if (T == typeof(UInt64))
+            else if (T == typeof(ulong))
             {
                 return Convert.ToUInt64(value.Value);
             }
-            else if (T == typeof(Int16))
+            else if (T == typeof(short))
             {
                 return Convert.ToInt16(value.Value);
             }
-            else if (T == typeof(Int32))
+            else if (T == typeof(int))
             {
                 return Convert.ToInt32(value.Value);
             }
-            else if (T == typeof(Int64))
+            else if (T == typeof(long))
             {
                 return Convert.ToInt64(value.Value);
             }
-            else if (T == typeof(Single))
+            else if (T == typeof(float))
             {
                 return Convert.ToSingle(value.Value);
             }
-            else if (T == typeof(Double))
+            else if (T == typeof(double))
             {
                 return Convert.ToDouble(value.Value);
             }
-            else if (T == typeof(Decimal))
+            else if (T == typeof(decimal))
             {
                 return Convert.ToDecimal(value.Value);
             }
-            else if (T == typeof(String))
+            else if (T == typeof(string))
             {
                 return Convert.ToString(value.Value) ?? string.Empty;
             }
@@ -575,7 +581,7 @@ namespace OPCUaClient
                     Value = tag.Value
                 }
             }));
-            this._session.Write(null, writeValues, out StatusCodeCollection statusCodes,
+            _session.Write(null, writeValues, out StatusCodeCollection statusCodes,
                 out DiagnosticInfoCollection diagnosticInfo);
 
             if (statusCodes.All(StatusCode.IsGood)) return;
@@ -595,7 +601,7 @@ namespace OPCUaClient
         /// <returns>
         /// A list of tags <see cref="Tag"/>
         /// </returns>
-        public List<Tag> Read(List<String> address)
+        public List<Tag> Read(List<string> address)
         {
             var tags = new List<Tag>();
 
@@ -606,7 +612,7 @@ namespace OPCUaClient
                 AttributeId = Attributes.Value
             }));
 
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+            _session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                 out DiagnosticInfoCollection diagnosticInfo);
 
             for (int i = 0; i < address.Count; i++)
@@ -635,16 +641,16 @@ namespace OPCUaClient
         /// <param name="monitor">
         /// Function to execute when the value changes.
         /// </param>
-        public void Monitoring(String address, int miliseconds, MonitoredItemNotificationEventHandler monitor)
+        public void Monitoring(string address, int miliseconds, MonitoredItemNotificationEventHandler monitor)
         {
-            if (this._session is null) return;
-            var subscription = this.Subscription(miliseconds);
+            if (_session is null) return;
+            var subscription = Subscription(miliseconds);
             MonitoredItem monitored = new MonitoredItem();
             monitored.StartNodeId = new NodeId(address);
             monitored.AttributeId = Attributes.Value;
             monitored.Notification += monitor;
             subscription.AddItem(monitored);
-            this._session.AddSubscription(subscription);
+            _session.AddSubscription(subscription);
             subscription.Create();
             subscription.ApplyChanges();
         }
@@ -653,15 +659,15 @@ namespace OPCUaClient
         /// Remove monitoring of a tag
         /// </summary>
         /// <param name="address"></param>
-        public void RemoveMonitoring(String address)
+        public void RemoveMonitoring(string address)
         {
-            if (this._session is null) return;
+            if (_session is null) return;
             MonitoredItem monitored = new MonitoredItem();
             monitored.StartNodeId = new NodeId(address);
             monitored.AttributeId = Attributes.Value;
-            var subscriptions = this._session.Subscriptions;
+            var subscriptions = _session.Subscriptions;
             var itemsToRemove = subscriptions.Where(x => x.MonitoredItems.Any(y => y.StartNodeId == monitored.StartNodeId)).ToArray();
-            this._session.RemoveSubscriptions(itemsToRemove);
+            _session.RemoveSubscriptions(itemsToRemove);
 
             //monitored.Notification += monitor;
             //subscription.AddItem(monitored);
@@ -681,7 +687,7 @@ namespace OPCUaClient
         /// </returns>
         public List<Device> Devices(bool recursive = false)
         {
-            Browser browser = new Browser(this._session)
+            Browser browser = new Browser(_session)
             {
                 BrowseDirection = BrowseDirection.Forward,
                 NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -697,8 +703,8 @@ namespace OPCUaClient
 
             devices.ForEach(d =>
             {
-                d.Groups = this.Groups(d.Address, recursive);
-                d.Tags = this.Tags(d.Address);
+                d.Groups = Groups(d.Address, recursive);
+                d.Tags = Tags(d.Address);
             });
 
             return devices;
@@ -717,10 +723,10 @@ namespace OPCUaClient
         /// <returns>
         /// List of <see cref="Group"/>
         /// </returns>
-        public List<Group> Groups(String address, bool recursive = false)
+        public List<Group> Groups(string address, bool recursive = false)
         {
             var groups = new List<Group>();
-            Browser browser = new Browser(this._session)
+            Browser browser = new Browser(_session)
             {
                 BrowseDirection = BrowseDirection.Forward,
                 NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -736,8 +742,8 @@ namespace OPCUaClient
                 {
                     Address = address + "." + result.ToString()
                 };
-                group.Groups = this.Groups(group.Address, recursive);
-                group.Tags = this.Tags(group.Address);
+                group.Groups = Groups(group.Address, recursive);
+                group.Tags = Tags(group.Address);
                 groups.Add(group);
             }
 
@@ -754,10 +760,10 @@ namespace OPCUaClient
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
-        public List<Tag> Tags(String address)
+        public List<Tag> Tags(string address)
         {
             var tags = new List<Tag>();
-            Browser browser = new Browser(this._session)
+            Browser browser = new Browser(_session)
             {
                 BrowseDirection = BrowseDirection.Forward,
                 NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -798,7 +804,7 @@ namespace OPCUaClient
         {
             return Task.Run(() =>
             {
-                Browser browser = new Browser(this._session)
+                Browser browser = new Browser(_session)
                 {
                     BrowseDirection = BrowseDirection.Forward,
                     NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -814,8 +820,8 @@ namespace OPCUaClient
 
                 devices.ForEach(d =>
                 {
-                    d.Groups = this.Groups(d.Address, recursive);
-                    d.Tags = this.Tags(d.Address);
+                    d.Groups = Groups(d.Address, recursive);
+                    d.Tags = Tags(d.Address);
                 });
                 return devices;
             }, ct);
@@ -837,7 +843,7 @@ namespace OPCUaClient
         /// <returns>
         /// List of <see cref="Group"/>
         /// </returns>
-        public Task<List<Group>> GroupsAsync(String address, bool recursive = false, CancellationToken ct = default)
+        public Task<List<Group>> GroupsAsync(string address, bool recursive = false, CancellationToken ct = default)
         {
             return Task.Run(() => Groups(address, recursive), ct);
         }
@@ -855,7 +861,7 @@ namespace OPCUaClient
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
-        public Task<List<Tag>> TagsAsync(String address, CancellationToken ct = default)
+        public Task<List<Tag>> TagsAsync(string address, CancellationToken ct = default)
         {
             return Task.Run(() => Tags(address), ct);
         }
@@ -873,7 +879,7 @@ namespace OPCUaClient
         /// <param name="ct">
         /// Cancellation token
         /// </param>
-        public async Task<Tag> WriteAsync(String address, Object value, CancellationToken ct = default)
+        public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
@@ -886,7 +892,7 @@ namespace OPCUaClient
                 }
             };
             writeValues.Add(writeValue);
-            WriteResponse response = await this._session.WriteAsync(null, writeValues, ct);
+            WriteResponse response = await _session.WriteAsync(null, writeValues, ct);
 
             var tag = new Tag()
             {
@@ -906,7 +912,7 @@ namespace OPCUaClient
         /// <param name="ct"> Cancellation token</param>
         public Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
         {
-            var task = this.WriteAsync(tag.Address, tag.Value, ct);
+            var task = WriteAsync(tag.Address, tag.Value, ct);
 
             return task;
         }
@@ -933,7 +939,7 @@ namespace OPCUaClient
                 }
             }));
 
-            WriteResponse response = await this._session.WriteAsync(null, writeValues, ct);
+            WriteResponse response = await _session.WriteAsync(null, writeValues, ct);
 
             for (int i = 0; i < response.Results.Count; i++)
             {
@@ -956,7 +962,7 @@ namespace OPCUaClient
         /// <returns>
         /// <see cref="Tag"/>
         /// </returns>
-        public async Task<Tag> ReadAsync(String address, CancellationToken ct = default)
+        public async Task<Tag> ReadAsync(string address, CancellationToken ct = default)
         {
             var tag = new Tag
             {
@@ -972,7 +978,7 @@ namespace OPCUaClient
                 }
             };
 
-            var dataValues = await this._session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+            var dataValues = await _session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
             tag.Value = dataValues.Results[0].Value;
             tag.Code = dataValues.Results[0].StatusCode;
@@ -999,7 +1005,7 @@ namespace OPCUaClient
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public Task<TValue> ReadAsync<TValue>(String address, CancellationToken ct = default) where TValue : class
+        public Task<TValue> ReadAsync<TValue>(string address, CancellationToken ct = default) where TValue : class
         {
             return Task.Run(() => Read<TValue>(address), ct);
         }
@@ -1017,7 +1023,7 @@ namespace OPCUaClient
         /// <returns>
         /// A list of tags <see cref="Tag"/>
         /// </returns>
-        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<String> address, CancellationToken ct = default)
+        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<string> address, CancellationToken ct = default)
         {
             var tags = new List<Tag>();
 
@@ -1029,7 +1035,7 @@ namespace OPCUaClient
             }));
 
             var dataValues =
-                await this._session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+                await _session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
             for (int i = 0; i < dataValues.Results.Count; i++)
             {
@@ -1046,6 +1052,282 @@ namespace OPCUaClient
 
         #endregion
 
+        #endregion
+
+        #region Info from Grok
+        //https://x.com/i/grok/share/tfUisFdmJWVXfX7XEyBgrhWOd
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="t"></param>
+        /// <param name="bytes"></param>
+        /// <param name="decoder"></param>
+        /// <returns></returns>
+        static object DeserializeTo(Type t, byte[] bytes, BinaryDecoder decoder)
+        {
+            var outputInstance = Activator.CreateInstance(t);
+            var properties = t.GetTypeInfo().GetProperties();
+
+            foreach (var p in properties)
+            {
+                object? value = p.PropertyType switch
+                {
+                    Type { Name: nameof(Int16) } => decoder.ReadInt16(p.Name),
+                    Type { Name: "Int16[]" } => decoder.ReadInt16Array(p.Name),
+                    /* etc. */
+                    Type { IsClass: true } childType => DeserializeTo(childType, bytes, decoder),
+                    _ => null
+                };
+                p.SetValue(outputInstance, value);
+            }
+
+            return outputInstance;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="TOutput"></typeparam>
+        /// <param name="bytes"></param>
+        /// <param name="ctx"></param>
+        /// <returns></returns>
+        public TOutput FromBytes<TOutput>(byte[] bytes, IServiceMessageContext ctx)
+        {
+            var decoder = new BinaryDecoder(bytes, ctx);
+            var outputResult = DeserializeTo(typeof(TOutput), bytes, decoder);
+            return (TOutput)outputResult;
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="nodeId"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public async Task<T> ReadNodeData<T>(NodeId nodeId) where T : class, new()
+        {
+            if (_session is null) return default!;
+            if (_session.Connected == false) return default!;
+            // Ermittle die DataTypeId der Node
+            var node = ExpandedNodeId.Parse(nodeId.ToString(), _session.NamespaceUris);
+            var result = _session.ReadNode(node);
+
+            
+
+            var browseDescription = new BrowseDescription
+            {
+                NodeId = nodeId,
+                BrowseDirection = BrowseDirection.Forward,
+                ReferenceTypeId = ReferenceTypeIds.HasTypeDefinition, // Alternativ: direkt nach DataType suchen
+                IncludeSubtypes = true,
+                NodeClassMask = (uint)NodeClass.DataType, // Nur VariableNodes
+                ResultMask = (uint)BrowseResultMask.All
+            };
+
+            _session.Browse(null, null, 0, new BrowseDescriptionCollection { browseDescription }, out BrowseResultCollection browseResults, out DiagnosticInfoCollection diagnostics);
+
+            if (browseResults == null || browseResults.Count == 0)
+            {
+                throw new Exception($"Konnte die Node {nodeId} nicht finden.");
+            }
+
+            var outputInstance = Activator.CreateInstance(typeof(T));
+            if (outputInstance == null)
+            {
+                return default!;
+            }
+            var properties=outputInstance.GetType().GetProperties();
+
+
+
+
+
+
+
+
+            //EncodeableFactory.GlobalFactory.AddEncodeableType(typeof(T));
+            //DataValue dv = _session.Read(nodeId);
+            //var rest = ExtensionObject.ToEncodeable((ExtensionObject)dv.Value) as T;
+            //var obj = (ExtensionObject)dv.Value;
+            //var value1 = (T)obj.Body;
+
+
+            //   var conversion=FromBytes<T>(data.Value as byte[],_session.MessageContext);
+
+
+
+            //var dataTypeId = await GetDataTypeId(_session, nodeId);
+
+
+            return default!;
+
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="nodeId"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public async Task WriteNodeData<T>(NodeId nodeId, T value) where T : class
+        {
+            if (_session is null) return;
+            if (_session.Connected == false) return;
+            // Ermittle die DataTypeId der Node
+            var dataTypeId = await GetDataTypeId(_session, nodeId);
+
+            var nodesToWrite = new WriteValueCollection();
+
+            if (value != null && value.GetType().IsClass && !(value is string))
+            {
+                // Konvertiere die C#-Klasse in ein ExtensionObject
+                var extensionObject = OpcUaMapper.MapToOpcUa(value, dataTypeId);
+                var writeValue = new WriteValue
+                {
+                    NodeId = nodeId,
+                    AttributeId = Attributes.Value,
+                    Value = new DataValue(new Variant(extensionObject))
+                };
+                nodesToWrite.Add(writeValue);
+            }
+            else
+            {
+                // Elementarer Datentyp
+                var writeValue = new WriteValue
+                {
+                    NodeId = nodeId,
+                    AttributeId = Attributes.Value,
+                    Value = new DataValue(new Variant(value))
+                };
+                nodesToWrite.Add(writeValue);
+            }
+
+            // Schreibe die Daten
+            _session.Write(null, nodesToWrite, out StatusCodeCollection statusCodes, out DiagnosticInfoCollection diagnostics);
+
+            if (!StatusCode.IsGood(statusCodes[0]))
+            {
+                throw new Exception($"Fehler beim Schreiben der Node {nodeId}: {statusCodes[0]}");
+            }
+        }
+
+        public async Task<NodeId> GetDataTypeId(Session session, NodeId nodeId)
+        {
+            var factory = new EncodeableFactory();
+            var types = factory.EncodeableTypes;
+
+            // Browse-Operation, um die DataType-Referenz der Node zu finden
+            var browseDescription = new BrowseDescription
+            {
+                NodeId = nodeId,
+                BrowseDirection = BrowseDirection.Forward,
+                ReferenceTypeId = ReferenceTypeIds.HasTypeDefinition, // Alternativ: direkt nach DataType suchen
+                IncludeSubtypes = true,
+                NodeClassMask = (uint)NodeClass.DataType, // Nur VariableNodes
+                ResultMask = (uint)BrowseResultMask.All
+            };
+
+            session.Browse(null, null, 0, new BrowseDescriptionCollection { browseDescription }, out BrowseResultCollection browseResults, out DiagnosticInfoCollection diagnostics);
+
+            if (browseResults == null || browseResults.Count == 0)
+            {
+                throw new Exception($"Konnte die Node {nodeId} nicht finden.");
+            }
+
+
+
+            var expandedNode = ExpandedNodeId.ToNodeId(browseResults[0].TypeId, session.NamespaceUris);
+            var myValue = types.TryGetValue(expandedNode, out var myType2);
+            if (myType2 != null)
+            {
+                var sss = myType2.GetTypeInfo();
+                var aaa = myType2.ReflectedType;
+
+            }
+
+            // Prüfe die Referenzen, um den Datentyp zu finden
+            foreach (var reference in browseResults[0].References)
+            {
+                // Hole die NodeClass und weitere Details der referenzierten Node
+                var targetNodeId = ExpandedNodeId.ToNodeId(reference.NodeId, session.NamespaceUris);
+                var trygetvalue = types.TryGetValue(targetNodeId, out var myType);
+
+
+
+                var detail = new BrowseDescription
+                {
+                    NodeId = targetNodeId,
+                    BrowseDirection = BrowseDirection.Forward,
+                    ReferenceTypeId = ReferenceTypeIds.HasTypeDefinition,
+                    IncludeSubtypes = true,
+                    NodeClassMask = (uint)NodeClass.ReferenceType,
+                    ResultMask = (uint)BrowseResultMask.All
+                };
+                var detailResult = session.ReadNode(targetNodeId);
+
+                var nodeDetails = new BrowseDescription
+                {
+                    NodeId = targetNodeId,
+                    BrowseDirection = BrowseDirection.Forward,
+                    ReferenceTypeId = ReferenceTypeIds.HasTypeDefinition,
+                    IncludeSubtypes = true,
+                    NodeClassMask = (uint)NodeClass.DataType,
+                    ResultMask = (uint)BrowseResultMask.All
+                };
+
+                session.Browse(null, null, 0, new BrowseDescriptionCollection { nodeDetails }, out BrowseResultCollection typeResults, out DiagnosticInfoCollection typeDiagnostics);
+
+                if (typeResults != null && typeResults.Count > 0)
+                {
+                    foreach (var typeRef in typeResults[0].References)
+                    {
+                        var dataTypeId = ExpandedNodeId.ToNodeId(typeRef.NodeId, session.NamespaceUris);
+                        if (dataTypeId != null)
+                        {
+                            return dataTypeId; // Datentyp gefunden
+                        }
+                    }
+                }
+
+                // Alternativ: Direkt nach dem DataType-Attribut der Node browsen
+                var dataTypeBrowse = new BrowseDescription
+                {
+                    NodeId = nodeId,
+                    BrowseDirection = BrowseDirection.Forward,
+                    ReferenceTypeId = ReferenceTypeIds.HasProperty, // DataType könnte als Property vorliegen
+                    IncludeSubtypes = true,
+                    NodeClassMask = (uint)NodeClass.Variable,
+                    ResultMask = (uint)BrowseResultMask.All
+                };
+
+                session.Browse(null, null, 0, new BrowseDescriptionCollection { dataTypeBrowse }, out BrowseResultCollection dataTypeResults, out DiagnosticInfoCollection dataTypeDiagnostics);
+
+                foreach (var refDescription in dataTypeResults[0].References)
+                {
+                    var refNodeId = ExpandedNodeId.ToNodeId(refDescription.NodeId, session.NamespaceUris);
+                    if (refDescription.BrowseName.Name == "DataType")
+                    {
+                        return refNodeId; // Datentyp gefunden
+                    }
+                }
+            }
+            return default!;
+            throw new Exception($"Konnte die DataTypeId der Node {nodeId} nicht ermitteln.");
+        }
+        #endregion
+
+        #region Beispiel Grok
+
+        //        // Beispiel: Daten lesen
+        //        var nodeId = new NodeId("ns=2;s=MyVectorNode");
+        //        var dataTypeId = new NodeId("ns=2;s=Vector");
+        //        var vector = await ReadNodeData<Vector>(session, nodeId, dataTypeId);
+        //        Console.WriteLine($"Vector: X={vector.X}, Y={vector.Y}, Z={vector.Z}");
+
+        //// Beispiel: Daten schreiben
+        //var newVector = new Vector { X = 1.0, Y = 2.0, Z = 3.0 };
+        //        await WriteNodeData(session, nodeId, dataTypeId, newVector);
         #endregion
     }
 }

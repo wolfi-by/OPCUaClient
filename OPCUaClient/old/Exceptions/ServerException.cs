@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace OPCUaClient.Exceptions
+namespace OPCUaClient.old.Exceptions
 {
-    internal class WriteException : Exception
+    internal class ServerException : Exception
     {
-        public WriteException(string? message) : base(message)
+        public ServerException(string? message) : base(message)
         {
         }
     }

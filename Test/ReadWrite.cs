@@ -1,5 +1,5 @@
-using OPCUaClient;
-using OPCUaClient.Objects;
+using OPCUaClient.old;
+using OPCUaClient.old.Objects;
 namespace Test
 {
     public class ReadWrite

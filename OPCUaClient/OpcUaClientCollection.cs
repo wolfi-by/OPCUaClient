@@ -4,11 +4,17 @@ using System.Net;
 
 namespace OPCUaClient
 {
-    public sealed class OpcUaClientCollection(OpcUaComlexTypeSystemSessionBuilder opcUaComlexTypeSystemSessionBuilder,
+    /// <summary>
+    ///   This class is used to manage a collection of OPC UA clients.
+    /// </summary>
+    /// <param name="opcUaComlexTypeSystemSessionBuilder"></param>
+    /// <param name="loggerFactory"></param>
+    /// <param name="logger"></param>
+    public sealed class OpcUaClientCollection(OpcUaComplexTypeSystemSessionBuilder opcUaComlexTypeSystemSessionBuilder,
         ILoggerFactory loggerFactory,
         ILogger<OpcUaClientCollection> logger) : IDisposable
     {
-        private readonly OpcUaComlexTypeSystemSessionBuilder _opcUaComlexTypeSystemSessionBuilder = opcUaComlexTypeSystemSessionBuilder;
+        private readonly OpcUaComplexTypeSystemSessionBuilder _opcUaComlexTypeSystemSessionBuilder = opcUaComlexTypeSystemSessionBuilder;
         private readonly ILoggerFactory _loggerFactory = loggerFactory;
         private readonly ILogger<OpcUaClientCollection> _logger = logger;
 
@@ -17,7 +23,7 @@ namespace OPCUaClient
 
         public IOtClient? GetOtClient(string ipAddress)
         {
-            var client = _otClients.FirstOrDefault(c => c.ipAddress.Contains(ipAddress));
+            var client = _otClients.FirstOrDefault(c => c.IPAddress.Contains(ipAddress));
             return client;
         }
 
@@ -27,7 +33,7 @@ namespace OPCUaClient
         /// <param name="ipAddress"></param>
         /// <returns></returns>
         public OtClientState GetOtClientState(string ipAddress)
-            => GetOtClient(ipAddress)?.State ?? GetOtClientState.Unknown;
+            => GetOtClient(ipAddress)?.State ?? OtClientState.Unknown;
 
         public async Task<IOtClient> CreateClientAsync(string sessionName, string connectionString, CancellationToken cancellationToken = default)
         {

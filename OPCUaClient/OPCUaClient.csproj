@@ -36,12 +36,13 @@ Add bugs to fix later.</PackageReleaseNotes>
   <ItemGroup>
     <PackageReference Include="Ardalis.Result" Version="10.1.0" />
     <PackageReference Include="Ardalis.Result.AspNetCore" Version="10.1.0" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua" Version="1.5.375.457" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.375.457" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client.ComplexTypes" Version="1.5.375.457" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client.Debug" Version="1.5.375.457" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Configuration" Version="1.5.375.457" />
-    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Core" Version="1.5.375.457" />
+    <PackageReference Include="Mapster" Version="7.4.0" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua" Version="1.5.376.213" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.376.213" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client.ComplexTypes" Version="1.5.376.213" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client.Debug" Version="1.5.376.213" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Configuration" Version="1.5.376.213" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Core" Version="1.5.376.213" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,7 @@ using Opc.Ua.Client;
 using Opc.Ua.Configuration;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 namespace OPCUaClient
 {
@@ -69,9 +70,13 @@ namespace OPCUaClient
         }
         internal OpcUaSessionBuilder WithCertificate(string cert, string key)
         {
+            //Recheck how to use
+            X509Certificate2 certificate = X509CertificateLoader.LoadCertificate(File.ReadAllBytes(cert));
+
             Identity = new UserIdentity(CertificateFactory
-                .CreateCertificateWithPEMPrivateKey(
-                new X509Certificate2(cert, key, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable), File.ReadAllBytes(key)));
+                .CreateCertificateWithPEMPrivateKey(certificate, Encoding.UTF8.GetBytes(key), null));
+
+            // new X509Certificate2(cert, key, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable), File.ReadAllBytes(key)));
             return this;
         }
         internal ISession Build()
@@ -79,7 +84,7 @@ namespace OPCUaClient
             return BuildAsync(CancellationToken.None).ConfigureAwait(continueOnCapturedContext: false).GetAwaiter().GetResult();
         }
 
-        internal async Task<ISessionChannel> BuildAsync(CancellationToken cancellationToken)
+        internal async Task<ISession> BuildAsync(CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(_sessionName, nameof(_sessionName));
             ArgumentNullException.ThrowIfNull(Endpoint, nameof(Endpoint));
@@ -89,26 +94,38 @@ namespace OPCUaClient
                 ApplicationName = _applicationName,
                 ApplicationType = ApplicationType.Client,
             };
-            ApplicationConfiguration applicationConfiguration = await applicationInstance
-                            .Build(_applicationUri, _productUri)
-                            .AsClient()
-                            .AddSecurityConfiguration(_subjectName)
-                            .Create();
 
-            var certOk = await applicationInstance.CheckApplicationInstanceCertificate(true, 0);
+            //Recheck how to use
+            CertificateIdentifierCollection certificateIdentifiers = new()
+            {
+                new CertificateIdentifier
+                {
+                    StoreType = Utils.DefaultStoreType,
+                    StorePath = Utils.DefaultStorePath,
+                    SubjectName = _subjectName,
+                                    }
+            };
+
+            ApplicationConfiguration applicationConfiguration = await applicationInstance
+                .Build(_applicationUri, _productUri)
+                .AsClient()
+                .AddSecurityConfiguration(certificateIdentifiers)
+                .Create();
+
+
+            var certOk = await applicationInstance.CheckApplicationInstanceCertificates(true, 0);
 
             Debug.Assert(certOk, "Certificate is not valid");
 
             try
             {
                 applicationConfiguration.CertificateValidator.CertificateValidation += OnCertificateValidation;
-                await applicationInstance.DeleteApplicationInstanceCertificate(cancellationToken);
-                var endpoiintConfiguration = EndpointConfiguration.Create(applicationInstance);
+                await applicationInstance.DeleteApplicationInstanceCertificate(null, cancellationToken);
                 using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
                 ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
 
                 ISession session = await DefaultSessionFactory.Instance.CreateAsync(
-                    applicationInstance,
+                    applicationConfiguration,
                     configuredEndpoint,
                     UpdateBeforeConnect,
                     _sessionName,

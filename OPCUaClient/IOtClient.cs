@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace OPCUaClient
 {
-    internal interface IOtClient:IDisposable
+    /// <summary>
+    ///   This interface is used to represent a client that connects to an OPC UA server.
+    /// </summary>
+    public interface IOtClient:IDisposable
     {
         string Name { get; }
         string IPAddress { get; }
@@ -19,7 +22,7 @@ namespace OPCUaClient
         Task SubscribeAsync<T>(IOtNode node, Action<T> action, CancellationToken cancellationToken = default);
         Task SubscribeAsync<T>(IOtNode node, Func<T, Task> asyncFunc, CancellationToken cancellationToken = default);
         Task SubscribeAsync<T>(IOtNode node, Func<T, ValueTask> asyncFunc, CancellationToken cancellationToken = default);
-        Task SubscribeAsync<T>(IEnumerable<IOtNode> nodes, Action<T> action, char CancellationToken = default);
+        Task SubscribeAsync<T>(IEnumerable<IOtNode> nodes, Action<T> action, CancellationToken CancellationToken = default);
         Task SubscribeAsync<T>(IEnumerable<IOtNode> nodes, Func<T,Task> asyncFunc, CancellationToken cancellationToken = default);
         Task SubscribeAsync<T>(IEnumerable<IOtNode> nodes, Func<T, ValueTask> asyncFunc, CancellationToken cancellationToken = default);
         Task UnsubscribeAsync(IOtNode node, CancellationToken cancellationToken = default);

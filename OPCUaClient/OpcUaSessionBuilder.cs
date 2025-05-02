@@ -178,17 +178,17 @@ namespace OPCUaClient
             string serverAddress = serverUri.Host;//Dns.GetHostAddresses(serverUri.Host)[0].ToString();
             var config = new ApplicationConfiguration()
             {
-                ApplicationName = _applicationName,
-                ApplicationUri = Utils.Format(@"urn:{0}:" + _applicationName + "", Endpoint),
+                ApplicationName = "MyClient",
+                ApplicationUri = Utils.Format(@"urn:{0}:MyClient", System.Net.Dns.GetHostName()),
                 ApplicationType = ApplicationType.Client,
                 SecurityConfiguration = new SecurityConfiguration
                 {
-                    ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = Utils.Format(@"CN={0}, DC={1}", _applicationName, serverAddress) },
+                    ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = "MyClientSubjectName" },
                     TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
                     TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
                     RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
                     AutoAcceptUntrustedCertificates = true,
-                    AddAppCertToTrustedStore = true
+                    //AddAppCertToTrustedStore = true
                 },
                 TransportConfigurations = new TransportConfigurationCollection(),
                 TransportQuotas = new TransportQuotas { OperationTimeout = 15000 },
@@ -209,22 +209,27 @@ namespace OPCUaClient
             };
             await application.CheckApplicationInstanceCertificates(false, 2048);
 
-            using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
-            ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
-            var selectedEndpoint = configuredEndpoint.Description;
+            EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(Endpoint, false);
+            EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(config);
+            ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
 
+            //using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
+            //ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
+            //var selectedEndpoint = configuredEndpoint.Description;
             try
             {
-                //ISession session = await DefaultSessionFactory.Instance.CreateAsync(
-                //    config,
-                //    configuredEndpoint,
-                //    UpdateBeforeConnect,
-                //    _sessionName,
-                //    SessionTimeout,
-                //    new UserIdentity(new AnonymousIdentityToken()),
-                //    preferredLocales: null,
-                //    cancellationToken);
-                ISession session = Session.Create(config, new ConfiguredEndpoint(null, selectedEndpoint, EndpointConfiguration.Create(config)), false, "", 60000, null, null).GetAwaiter().GetResult();
+                ISession _session = Session.Create(config, endpoint, false, false, config.ApplicationName, 60000, new UserIdentity(), null).Result;
+                return _session;
+                ISession session = await DefaultSessionFactory.Instance.CreateAsync(
+                    config,
+                    endpoint,
+                    UpdateBeforeConnect,
+                    config.ApplicationName,
+                    SessionTimeout,
+                    new UserIdentity(new AnonymousIdentityToken()),
+                    preferredLocales: null,
+                    cancellationToken);
+
                 return session;
             }
             catch (Exception ex)

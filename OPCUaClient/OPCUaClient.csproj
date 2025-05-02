@@ -14,7 +14,6 @@
     <PackageReleaseNotes>Add new read function.
 Add bugs to fix later.</PackageReleaseNotes>
     <Copyright>Joc-Luis</Copyright>
-    <ApplicationIcon>connection.ico</ApplicationIcon>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Company>$(Authors)</Company>
@@ -22,9 +21,7 @@ Add bugs to fix later.</PackageReleaseNotes>
     <PackageVersion>2.1.1</PackageVersion>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Content Include="old\connection.ico" />
-  </ItemGroup>
+
 
   <ItemGroup>
     <None Include="..\README.MD" Link="old\README.MD">
@@ -45,11 +42,6 @@ Add bugs to fix later.</PackageReleaseNotes>
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Core" Version="1.5.376.213" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="old\connection.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-  </ItemGroup>
+ 
 
 </Project>

@@ -1,9 +1,17 @@
-﻿using Opc.Ua;
+﻿using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Opc.Ua;
 using Opc.Ua.Client;
 using Opc.Ua.Configuration;
+using Org.BouncyCastle.Tls;
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using static System.Net.Mime.MediaTypeNames;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace OPCUaClient
 {
@@ -13,9 +21,9 @@ namespace OPCUaClient
     public sealed class OpcUaSessionBuilder
     {
         const string _applicationName = "LaMeR_Swarm_Worker";
-        const string _subjectName = "CN=UA LaMeR_Swar_Worker, O=OPC Foundation, C=US, S=Arizona";
-        const string _applicationUri = "urn:localhost:github.com:wolfi_by";
-        const string _productUri = "Uri:github.com:wolfi_by";
+        const string _subjectName = "CN=UA LaMeR_Swarm_Worker, O=OPC Foundation, C=US, S=Arizona";
+        const string _applicationUri = "urn:localhost:github.com:wolfi-by";
+        const string _productUri = "Uri:github.com:wolfi-by";
 
         const string _baseSessionName = "LaMeR.Swarm.Worker";
         private string _sessionName = "LaMeR.Swarm.Worker";
@@ -84,67 +92,151 @@ namespace OPCUaClient
             return BuildAsync(CancellationToken.None).ConfigureAwait(continueOnCapturedContext: false).GetAwaiter().GetResult();
         }
 
+
+
         internal async Task<ISession> BuildAsync(CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(_sessionName, nameof(_sessionName));
             ArgumentNullException.ThrowIfNull(Endpoint, nameof(Endpoint));
 
-            var applicationInstance = new ApplicationInstance
+
+
+
+
+            //var config = new ApplicationConfiguration()
+            //{
+            //    ApplicationName = _applicationName,
+            //    ApplicationUri = _applicationUri, // Utils.Format(@"urn:{0}:" + _sessionName + "", Endpoint),
+            //    ApplicationType = ApplicationType.Client,
+            //    SecurityConfiguration = new SecurityConfiguration
+            //    {
+            //        ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = Utils.Format(@"CN={0}, DC={1}", _applicationName, Endpoint) },
+            //        TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
+            //        TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
+            //        RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
+            //        AutoAcceptUntrustedCertificates = true,
+            //        AddAppCertToTrustedStore = true
+            //    },
+            //    TransportConfigurations = new TransportConfigurationCollection(),
+            //    TransportQuotas = new TransportQuotas { OperationTimeout = 15000 },
+            //    ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = 60000 },
+            //    TraceConfiguration = new TraceConfiguration(),
+            //                };
+            //config.Validate(ApplicationType.Client).GetAwaiter().GetResult();
+            //if (config.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+            //{
+            //    config.CertificateValidator.CertificateValidation += OnCertificateValidation;
+            //}
+
+            //var applicationInstance = new ApplicationInstance
+            //{
+            //    ApplicationName = _applicationName,
+            //    ApplicationType = ApplicationType.Client,
+            //    ApplicationConfiguration = config
+            //};
+            ////ApplicationConfiguration applicationConfiguration = await applicationInstance
+            ////    .Build(_applicationUri, _productUri)
+            ////    .AsClient().A(applicationConfiguration)
+            ////    .Create();
+
+
+            //var certOk = await applicationInstance.CheckApplicationInstanceCertificates(false, 2048);
+
+
+            //// 
+            //try
+            //{
+            //    //applicationConfiguration.CertificateValidator.CertificateValidation += OnCertificateValidation;
+            //    await applicationInstance.DeleteApplicationInstanceCertificate(null, cancellationToken);
+            //    using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
+            //    ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
+            //    var epDescription = configuredEndpoint.Description;
+            //    ISession session = await Session.Create(config, new ConfiguredEndpoint(null, epDescription, EndpointConfiguration.Create(config)), UpdateBeforeConnect, "", SessionTimeout, null, null);
+
+            //    //ISession session = await DefaultSessionFactory.Instance.CreateAsync(
+            //    //    config,
+            //    //    configuredEndpoint,
+            //    //    UpdateBeforeConnect,
+            //    //    _sessionName,
+            //    //    SessionTimeout,
+            //    //    new UserIdentity(new AnonymousIdentityToken()),
+            //    //    preferredLocales: null,
+            //    //    cancellationToken);
+
+            //    session.DeleteSubscriptionsOnClose = true;
+            //    session.TransferSubscriptionsOnReconnect = true;
+
+            //    return session;
+            //}
+            //catch (Exception)
+            //{
+            //    config.CertificateValidator.CertificateValidation -= OnCertificateValidation;
+            //    throw;
+            //}
+
+            Uri serverUri = new Uri(Endpoint);
+            string serverAddress = serverUri.Host;//Dns.GetHostAddresses(serverUri.Host)[0].ToString();
+            var config = new ApplicationConfiguration()
+            {
+                ApplicationName = _applicationName,
+                ApplicationUri = Utils.Format(@"urn:{0}:" + _applicationName + "", Endpoint),
+                ApplicationType = ApplicationType.Client,
+                SecurityConfiguration = new SecurityConfiguration
+                {
+                    ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = Utils.Format(@"CN={0}, DC={1}", _applicationName, serverAddress) },
+                    TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
+                    TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
+                    RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
+                    AutoAcceptUntrustedCertificates = true,
+                    AddAppCertToTrustedStore = true
+                },
+                TransportConfigurations = new TransportConfigurationCollection(),
+                TransportQuotas = new TransportQuotas { OperationTimeout = 15000 },
+                ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = 60000 },
+                TraceConfiguration = new TraceConfiguration()
+            };
+            config.Validate(ApplicationType.Client).GetAwaiter().GetResult();
+            if (config.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+            {
+                config.CertificateValidator.CertificateValidation += (s, e) => { e.Accept = (e.Error.StatusCode == StatusCodes.BadCertificateUntrusted); };
+            }
+
+            var application = new ApplicationInstance
             {
                 ApplicationName = _applicationName,
                 ApplicationType = ApplicationType.Client,
+                ApplicationConfiguration = config
             };
+            await application.CheckApplicationInstanceCertificates(false, 2048);
 
-            //Recheck how to use
-            CertificateIdentifierCollection certificateIdentifiers = new()
-            {
-                new CertificateIdentifier
-                {
-                    StoreType = Utils.DefaultStoreType,
-                    StorePath = Utils.DefaultStorePath,
-                    SubjectName = _subjectName,
-                                    }
-            };
-
-            ApplicationConfiguration applicationConfiguration = await applicationInstance
-                .Build(_applicationUri, _productUri)
-                .AsClient()
-                .AddSecurityConfiguration(certificateIdentifiers)
-                .Create();
-
-
-            var certOk = await applicationInstance.CheckApplicationInstanceCertificates(true, 0);
-
-            Debug.Assert(certOk, "Certificate is not valid");
+            using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
+            ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
+            var selectedEndpoint = configuredEndpoint.Description;
 
             try
             {
-                applicationConfiguration.CertificateValidator.CertificateValidation += OnCertificateValidation;
-                await applicationInstance.DeleteApplicationInstanceCertificate(null, cancellationToken);
-                using var discoveryClient = DiscoveryClient.Create(new Uri(Endpoint));
-                ConfiguredEndpoint configuredEndpoint = new(null, discoveryClient.Endpoint, discoveryClient.EndpointConfiguration);
-
-                ISession session = await DefaultSessionFactory.Instance.CreateAsync(
-                    applicationConfiguration,
-                    configuredEndpoint,
-                    UpdateBeforeConnect,
-                    _sessionName,
-                    SessionTimeout,
-                    new UserIdentity(new AnonymousIdentityToken()),
-                    preferredLocales: null,
-                    cancellationToken);
-
-                session.DeleteSubscriptionsOnClose = true;
-                session.TransferSubscriptionsOnReconnect = true;
-
+                //ISession session = await DefaultSessionFactory.Instance.CreateAsync(
+                //    config,
+                //    configuredEndpoint,
+                //    UpdateBeforeConnect,
+                //    _sessionName,
+                //    SessionTimeout,
+                //    new UserIdentity(new AnonymousIdentityToken()),
+                //    preferredLocales: null,
+                //    cancellationToken);
+                ISession session = Session.Create(config, new ConfiguredEndpoint(null, selectedEndpoint, EndpointConfiguration.Create(config)), false, "", 60000, null, null).GetAwaiter().GetResult();
                 return session;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                applicationConfiguration.CertificateValidator.CertificateValidation -= OnCertificateValidation;
+
+                config.CertificateValidator.CertificateValidation -= OnCertificateValidation;
                 throw;
             }
         }
+
+
+
         private void OnCertificateValidation(CertificateValidator sender, CertificateValidationEventArgs e)
         {
             e.Accept = true;

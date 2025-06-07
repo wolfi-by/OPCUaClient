@@ -21,15 +21,6 @@ Add bugs to fix later.</PackageReleaseNotes>
     <PackageVersion>2.1.1</PackageVersion>
   </PropertyGroup>
 
-
-
-  <ItemGroup>
-    <None Include="..\README.MD" Link="old\README.MD">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Ardalis.Result" Version="10.1.0" />
     <PackageReference Include="Ardalis.Result.AspNetCore" Version="10.1.0" />

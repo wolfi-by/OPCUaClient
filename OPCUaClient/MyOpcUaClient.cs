@@ -90,10 +90,11 @@ public class MyOpcUaClient
         try
         {
             var node = NodeId.Parse(nodeId);
-            if (!typeof(T).IsClass)
+            if (!typeof(T).IsClass||typeof(T).IsArray)
             {
                 return ReadNodeValue<T>(node);
             }
+            
             return ReadNodeClass<T>(node);
 
 
@@ -135,17 +136,17 @@ public class MyOpcUaClient
             NodeId variableNodeId = NodeId.Parse(reference.NodeId.ToString());
 
             var property = result!.GetType().GetProperty(variableName);
-            if (property!=null&&property.CanWrite)
+            if (property != null && property.CanWrite)
             {
-                
+
                 if (property.GetType().IsClass)
                 {
-                    property.SetValue(result,ReadNodeValue<object>(variableNodeId),null);
+                    property.SetValue(result, ReadNodeValue<object>(variableNodeId), null);
                     continue;
                 }
                 property.SetValue(result, ReadNodeValue<object>(variableNodeId), null);
             }
-            
+
         }
         return result;
     }
@@ -186,9 +187,42 @@ public class MyOpcUaClient
         try
         {
             var node = NodeId.Parse(nodeId);
+            if (!typeof(T).IsClass|| typeof(T).IsArray)
+            {
+                WriteNodeValue(nodeId, value);
+                return;
+            }
+            WriteNodeClass(nodeId, value);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Fehler beim Schreiben auf Node {nodeId}: {ex.Message}");
+            throw;
+        }
+    }
+
+    private void WriteNodeClass<T>(string nodeId, T? value)
+    {
+        foreach (var property in value!.GetType().GetProperties())
+        {
+
+            var propertyValue = property.GetValue(value);
+            if (propertyValue != null)
+            {
+                var childNodeId = $"{nodeId}.{property.Name}";
+                WriteNodeValue(childNodeId, propertyValue);
+            }
+        }
+    }
+
+
+    private void WriteNodeValue<T>(string nodeId, T? value)
+    {
+        try
+        {
             var writeValue = new WriteValue
             {
-                NodeId = node,
+                NodeId = nodeId,
                 AttributeId = Attributes.Value,
                 Value = new DataValue(new Variant(value))
             };

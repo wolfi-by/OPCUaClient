@@ -11,17 +11,23 @@ using static System.Collections.Specialized.BitVector32;
 using Mapster;
 using Microsoft.Extensions.Logging;
 using Ardalis.Result;
+using Microsoft.Extensions.Options;
+using System.Reflection;
 
 namespace OPCUaClient;
-public class MyOpcUaClient
+public class MyOpcUaClient : IDisposable
 {
     private readonly string endpointUrl;
-    private Session session;
+    private ISession session;
+    private SessionReconnectHandler reconnectHandler;
     private readonly ApplicationConfiguration config;
+    private readonly IOptions<MyOpcUaClientOptions> _options;
+    private readonly ILogger<MyOpcUaClient> _logger;
 
-    public MyOpcUaClient(string endpointUrl)
+    public MyOpcUaClient(IOptions<MyOpcUaClientOptions> options, ILogger<MyOpcUaClient> logger)
     {
-        this.endpointUrl = endpointUrl;
+        _options = options;
+        _logger = logger;
 
         // Grundlegende Konfiguration für den Client
         config = new ApplicationConfiguration
@@ -43,11 +49,16 @@ public class MyOpcUaClient
 
     public async Task ConnectAsync()
     {
+        if (session != null && session.Connected)
+        {
+            return;
+        }
         try
         {
             // Endpoint auswählen
-            var endpointDescription = CoreClientUtils.SelectEndpoint(endpointUrl, useSecurity: false);
 
+            // Endpoint auswählen mit ApplicationConfiguration
+            var endpointDescription = CoreClientUtils.SelectEndpoint(config, _options.Value.endpointUrl, useSecurity: false);
             // Session erstellen
             session = await Session.Create(
                 configuration: config,
@@ -58,6 +69,9 @@ public class MyOpcUaClient
                 sessionTimeout: 60000,
                 identity: new UserIdentity(new AnonymousIdentityToken()),
                 preferredLocales: null);
+
+            session.KeepAlive += SessionKeepAliveHandler;
+
 
             await session.LoadDataTypeSystem();
 
@@ -70,19 +84,47 @@ public class MyOpcUaClient
         }
     }
 
+    private void SessionKeepAliveHandler(ISession sender, KeepAliveEventArgs e)
+    {
+        if (e.Status != null && ServiceResult.IsNotGood(e.Status))
+        {
+            Console.WriteLine("{0} {1}/{2}", e.Status, sender.OutstandingRequestCount, sender.DefunctRequestCount);
+
+            if (reconnectHandler == null)
+            {
+                Console.WriteLine("--- RECONNECTING ---");
+                reconnectHandler = new SessionReconnectHandler();
+                reconnectHandler.BeginReconnect(sender, _options.Value.ReconnectPeriod * 1000, Client_ReconnectComplete);
+            }
+        }
+    }
+
+    private void Client_ReconnectComplete(object? sender, EventArgs e)
+    {
+        if (!Object.ReferenceEquals(sender, reconnectHandler))
+        {
+            return;
+        }
+
+        session = reconnectHandler.Session;
+        reconnectHandler.Dispose();
+        reconnectHandler = null!;
+        Console.WriteLine("--- RECONNECTED ---");
+    }
+
     public async Task DisconnectAsync()
     {
         if (session != null)
         {
             await session.CloseAsync();
-            session.Dispose();
-            session = null;
+            session?.Dispose();
+            session = null!;
             Console.WriteLine("Verbindung zum OPC UA Server geschlossen.");
         }
     }
 
     // Generische Lesemethode
-    public T ReadNode<T>(string nodeId)
+    public async Task<T> ReadNodeAsync<T>(string nodeId, CancellationToken ct = default)
     {
         if (session == null)
             throw new InvalidOperationException("Client ist nicht verbunden.");
@@ -90,12 +132,12 @@ public class MyOpcUaClient
         try
         {
             var node = NodeId.Parse(nodeId);
-            if (!typeof(T).IsClass||typeof(T).IsArray)
+            if (!typeof(T).IsClass || typeof(T).IsArray)
             {
-                return ReadNodeValue<T>(node);
+                return (await ReadNodeValueAsync<T>(node, ct));
             }
-            
-            return ReadNodeClass<T>(node);
+
+            return (await ReadNodeClassAsync<T>(node, ct));
 
 
 
@@ -108,7 +150,7 @@ public class MyOpcUaClient
         return default!;
     }
 
-    private T ReadNodeClass<T>(NodeId node)
+    private async Task<T> ReadNodeClassAsync<T>(NodeId node, CancellationToken ct)
     {
         BrowseDescription browseDesc = new BrowseDescription
         {
@@ -120,16 +162,16 @@ public class MyOpcUaClient
             ResultMask = (uint)BrowseResultMask.All
         };
         BrowseDescriptionCollection browseDescs = new BrowseDescriptionCollection { browseDesc };
-        session.Browse(null, null, 0, browseDescs, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
-
-        if (results == null || results.Count != 1)
+        var asyncresult = await session.BrowseAsync(null, null, 0, browseDescs, ct);
+        if (asyncresult.Results == null || asyncresult.Results.Count != 1)
         {
             return default!;
         }
 
 
         T result = Activator.CreateInstance<T>();
-        foreach (var reference in results[0].References)
+        //foreach (var reference in results[0].References)
+        foreach (var reference in asyncresult.Results[0].References)
         {
             var variableName = reference.DisplayName.Text;
             // Die NodeId der referenzierten Variable abrufen
@@ -141,21 +183,21 @@ public class MyOpcUaClient
 
                 if (property.GetType().IsClass)
                 {
-                    property.SetValue(result, ReadNodeValue<object>(variableNodeId), null);
+                    property.SetValue(result, await ReadNodeValueAsync<object>(variableNodeId, ct), null);
                     continue;
                 }
-                property.SetValue(result, ReadNodeValue<object>(variableNodeId), null);
+                property.SetValue(result, await ReadNodeValueAsync<object>(variableNodeId, ct), null);
             }
 
         }
         return result;
     }
 
-    private T ReadNodeValue<T>(NodeId node)
+    private async Task<T> ReadNodeValueAsync<T>(NodeId node, CancellationToken ct)
     {
         try
         {
-            DataValue dataValue = session.ReadValue(node);
+            DataValue dataValue = await session.ReadValueAsync(node, ct);
 
             if (StatusCode.IsGood(dataValue.StatusCode) && dataValue.Value != null)
             {
@@ -179,7 +221,7 @@ public class MyOpcUaClient
 
 
     // Generische Schreibmethode
-    public void WriteNode<T>(string nodeId, T value)
+    public async Task WriteNodeAsync<T>(string nodeId, T value, CancellationToken ct = default)
     {
         if (session == null)
             throw new InvalidOperationException("Client ist nicht verbunden.");
@@ -187,21 +229,22 @@ public class MyOpcUaClient
         try
         {
             var node = NodeId.Parse(nodeId);
-            if (!typeof(T).IsClass|| typeof(T).IsArray)
+            if (!typeof(T).IsClass || typeof(T).IsArray)
             {
-                WriteNodeValue(nodeId, value);
+                await WriteNodeValueAsync(nodeId, value, ct);
                 return;
             }
-            WriteNodeClass(nodeId, value);
+            await WriteNodeClassAsync(nodeId, value, ct);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Fehler beim Schreiben auf Node {nodeId}: {ex.Message}");
             throw;
         }
+
     }
 
-    private void WriteNodeClass<T>(string nodeId, T? value)
+    private async Task WriteNodeClassAsync<T>(string nodeId, T? value, CancellationToken ct)
     {
         foreach (var property in value!.GetType().GetProperties())
         {
@@ -210,13 +253,13 @@ public class MyOpcUaClient
             if (propertyValue != null)
             {
                 var childNodeId = $"{nodeId}.{property.Name}";
-                WriteNodeValue(childNodeId, propertyValue);
+                await WriteNodeValueAsync(childNodeId, propertyValue, ct);
             }
         }
     }
 
 
-    private void WriteNodeValue<T>(string nodeId, T? value)
+    private async Task WriteNodeValueAsync<T>(string nodeId, T? value, CancellationToken ct)
     {
         try
         {
@@ -228,11 +271,12 @@ public class MyOpcUaClient
             };
 
             var writeValues = new WriteValueCollection { writeValue };
-            session.Write(null, writeValues, out StatusCodeCollection results, out DiagnosticInfoCollection diagnosticInfos);
+            //session.Write(null, writeValues, out StatusCodeCollection results, out DiagnosticInfoCollection diagnosticInfos);
+            WriteResponse result = await session.WriteAsync(null, writeValues, ct);
 
-            if (!StatusCode.IsGood(results[0]))
+            if (!StatusCode.IsGood(result.Results[0]))
             {
-                throw new Exception($"Fehler beim Schreiben auf Node {nodeId}: {results[0].ToString()}");
+                throw new Exception($"Fehler beim Schreiben auf Node {nodeId}: {result.Results[0].ToString()}");
             }
 
             Console.WriteLine($"Erfolgreich geschrieben auf Node {nodeId}: {value}");
@@ -293,10 +337,23 @@ public class MyOpcUaClient
             throw;
         }
     }
+
+    public void Dispose()
+    {
+        if (session != null)
+        {
+            try
+            {
+                session.KeepAlive -= SessionKeepAliveHandler;
+                session.Close();
+                session.Dispose();
+                session = null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Fehler beim Schließen der OPC UA Session.");
+            }
+        }
+    }
 }
 
-// Beispielprogramm
-class Program
-{
-
-}

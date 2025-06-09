@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Opc.Ua;
 using Opc.Ua.Client;
+using System.Dynamic;
 
 namespace OPCUaClient;
 
@@ -100,6 +101,28 @@ public class MyOpcUaClient : IDisposable
             session?.Dispose();
             session = null!;
             Console.WriteLine("Verbindung zum OPC UA Server geschlossen.");
+        }
+    }
+
+    public async Task<string> ReadNodeTypeAsync(string nodeId, CancellationToken ct = default)
+    {
+        if (session == null)
+            throw new InvalidOperationException("Client ist nicht verbunden.");
+
+        try
+        {
+            var node = NodeId.Parse(nodeId);
+
+            VariableNode n = (VariableNode)session.ReadNode(node);
+            var tt = n.GetSuperType(session.TypeTree);
+            NodeId dtNode = NodeId.Parse(n.DataType.ToString());
+            var nodetype = await session.ReadNodeAsync(dtNode, ct);
+            return nodetype.ToString();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Fehler beim Lesen von Node {nodeId}: {ex.Message}");
+            throw;
         }
     }
 

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -10,9 +11,8 @@ namespace OPCUaClient;
 /// </summary>
 public class MyOpcUaClient : IDisposable
 {
-    private readonly string endpointUrl;
-    private ISession session;
-    private SessionReconnectHandler reconnectHandler;
+    private ISession? session;
+    private SessionReconnectHandler? reconnectHandler;
     private readonly ApplicationConfiguration config;
     private readonly IOptions<MyOpcUaClientOptions> _options;
     private readonly ILogger<MyOpcUaClient> _logger;
@@ -198,8 +198,6 @@ public class MyOpcUaClient : IDisposable
 
     }
 
-
-
     /// <summary>
     /// Abonniert einen Node für Änderungen und ruft den Callback bei Änderungen auf.
     /// </summary>
@@ -255,6 +253,36 @@ public class MyOpcUaClient : IDisposable
             throw;
         }
     }
+
+    /// <summary>
+    /// Ruft eine Methode auf dem OPC UA Server asynchron auf.
+    /// </summary>
+    /// <param name="objectNodeId"></param>
+    /// <param name="methodNodeId"></param>
+    /// <param name="values"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    public async Task<IList<object>> CallMethod(string objectNodeId, string methodNodeId, object[]? values, CancellationToken ct = default!)
+    {
+        if (session == null)
+            throw new InvalidOperationException("Client ist nicht verbunden.");
+
+        try
+        {
+            var node = NodeId.Parse(methodNodeId);
+            var objectId = NodeId.Parse(objectNodeId);
+            return await session.CallAsync(objectId, node, ct, values);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Fehler beim Erstellen der Subskription für Node {methodNodeId}: {ex.Message}");
+            throw;
+        }
+
+    }
+
+
 
     /// <summary>
     /// Gibt alle Ressourcen des OPC UA Clients frei und schließt die Verbindung zum Server.
